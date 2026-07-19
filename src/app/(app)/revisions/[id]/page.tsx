@@ -1,0 +1,40 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Check, Circle, Clock3, Network, ShieldCheck } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { RevisionActionPanel } from "@/components/revision-action-panel";
+import { RiskBadge, StatusBadge } from "@/components/status-badge";
+import { requireCurrentUser } from "@/data/auth";
+import { getRevision } from "@/data/revisions";
+import { formatDate, formatDateTime } from "@/lib/format";
+import type { RevisionStatusValue } from "@/lib/domain/revision-workflow";
+
+const steps = ["DRAFT", "IN_REVIEW", "APPROVED", "ISSUED", "CLOSED"] as const;
+
+export default async function RevisionDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const [revision, user] = await Promise.all([getRevision(id), requireCurrentUser()]);
+  if (!revision) notFound();
+  const currentIndex = steps.indexOf(revision.status);
+  return (
+    <div className="space-y-7">
+      <Link href={`/drawings/${revision.drawing.id}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> {revision.drawing.number}</Link>
+      <PageHeader eyebrow={`${revision.drawing.project.code} · ${revision.drawing.block} · ${revision.drawing.zone}`} title={`${revision.drawing.number} / Rev ${revision.revisionCode}`} description={revision.drawing.title} actions={<div className="flex items-center gap-2"><RiskBadge risk={revision.riskLevel} /><StatusBadge status={revision.status} /></div>} />
+
+      <section aria-label="Revision workflow" className="overflow-x-auto rounded-lg border bg-card px-4 py-5"><ol className="flex min-w-[680px] items-center">{steps.map((step, index) => { const complete = index <= currentIndex; return <li key={step} className="flex flex-1 items-center last:flex-none"><div className="flex flex-col items-center gap-1.5"><span className={complete ? "flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground" : "flex size-7 items-center justify-center rounded-full border bg-background text-muted-foreground"}>{index < currentIndex ? <Check className="size-4" /> : <Circle className="size-3 fill-current" />}</span><span className={complete ? "text-xs font-medium" : "text-xs text-muted-foreground"}>{step.replaceAll("_", " ").toLowerCase()}</span></div>{index < steps.length - 1 ? <span className={index < currentIndex ? "mx-3 h-px flex-1 bg-primary" : "mx-3 h-px flex-1 bg-border"} /> : null}</li>; })}</ol></section>
+
+      <div className="grid gap-7 xl:grid-cols-[minmax(0,1.45fr)_380px]">
+        <div className="space-y-7">
+          <section className="rounded-lg border bg-card p-5"><div className="mb-5 flex items-center gap-2"><Network className="size-4 text-primary" /><h2 className="text-base font-semibold">Change and impact definition</h2></div><dl className="grid gap-5 sm:grid-cols-2"><div className="sm:col-span-2"><dt className="text-xs font-medium text-muted-foreground">Change summary</dt><dd className="mt-1 text-sm leading-6">{revision.summary}</dd></div><div className="sm:col-span-2"><dt className="text-xs font-medium text-muted-foreground">Reason for change</dt><dd className="mt-1 text-sm leading-6">{revision.reason}</dd></div><div><dt className="text-xs font-medium text-muted-foreground">Responsible owner</dt><dd className="mt-1 text-sm">{revision.owner.name}</dd></div><div><dt className="text-xs font-medium text-muted-foreground">Created by</dt><dd className="mt-1 text-sm">{revision.createdBy.name}</dd></div><div><dt className="text-xs font-medium text-muted-foreground">Effective date</dt><dd className="mt-1 text-sm">{formatDate(revision.effectiveDate)}</dd></div><div><dt className="text-xs font-medium text-muted-foreground">Control due date</dt><dd className="mt-1 text-sm">{formatDate(revision.dueDate)}</dd></div>{revision.mitigation ? <div className="sm:col-span-2 rounded-md border border-orange-200 bg-orange-50 p-4"><dt className="text-xs font-semibold text-orange-900">Risk mitigation</dt><dd className="mt-1 text-sm leading-6 text-orange-950">{revision.mitigation}</dd></div> : null}</dl></section>
+
+          <section><div className="mb-3"><h2 className="text-base font-semibold">Affected work</h2><p className="text-sm text-muted-foreground">Downstream controls registered for this change</p></div><div className="overflow-hidden rounded-lg border bg-card"><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead className="bg-muted/60 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3 font-medium">Type</th><th className="px-4 py-3 font-medium">Target</th><th className="px-4 py-3 font-medium">Control description</th><th className="px-4 py-3 font-medium">Severity</th></tr></thead><tbody className="divide-y">{revision.impacts.map((impact) => <tr key={impact.id}><td className="px-4 py-3 capitalize">{impact.type.replaceAll("_", " ").toLowerCase()}</td><td className="px-4 py-3 font-mono text-xs font-semibold">{impact.target}</td><td className="px-4 py-3 leading-5 text-muted-foreground">{impact.description}</td><td className="px-4 py-3"><RiskBadge risk={impact.severity} /></td></tr>)}</tbody></table></div></div></section>
+
+          <section><div className="mb-3 flex items-center gap-2"><ShieldCheck className="size-4 text-primary" /><div><h2 className="text-base font-semibold">Review and field evidence</h2><p className="text-sm text-muted-foreground">Independent decisions and production acknowledgement</p></div></div><div className="grid gap-4 lg:grid-cols-2"><div className="rounded-lg border bg-card"><div className="border-b px-4 py-3 text-sm font-semibold">Review records</div><div className="divide-y">{revision.reviews.map((review) => <div key={review.id} className="p-4"><div className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{review.reviewer.name}</span><span className={review.decision === "APPROVED" ? "text-xs font-semibold text-emerald-700" : "text-xs font-semibold text-orange-700"}>{review.decision.toLowerCase()}</span></div><p className="mt-2 text-sm leading-5 text-muted-foreground">{review.comment}</p><p className="mt-2 text-xs text-muted-foreground">{formatDateTime(review.createdAt)}</p></div>)}{revision.reviews.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No review decision recorded.</p> : null}</div></div><div className="rounded-lg border bg-card"><div className="border-b px-4 py-3 text-sm font-semibold">Production acknowledgements</div><div className="divide-y">{revision.acknowledgements.map((ack) => <div key={ack.id} className="p-4"><p className="text-sm font-medium">{ack.user.name}</p><p className="mt-2 text-sm leading-5 text-muted-foreground">{ack.note || "Issue receipt confirmed."}</p><p className="mt-2 text-xs text-muted-foreground">{formatDateTime(ack.createdAt)}</p></div>)}{revision.acknowledgements.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No field acknowledgement recorded.</p> : null}</div></div></div></section>
+        </div>
+
+        <aside className="space-y-5"><RevisionActionPanel revisionId={revision.id} status={revision.status as RevisionStatusValue} role={user.role} userId={user.id} createdById={revision.createdById} acknowledgementCount={revision.acknowledgements.length} /><section className="rounded-lg border bg-card"><div className="flex items-center gap-2 border-b px-4 py-3"><Clock3 className="size-4 text-primary" /><h2 className="text-sm font-semibold">Audit timeline</h2></div><div className="divide-y">{revision.auditEvents.map((event) => <div key={event.id} className="p-4"><p className="text-xs font-semibold uppercase text-foreground">{event.action.replaceAll("_", " ").toLowerCase()}</p><p className="mt-1 text-xs text-muted-foreground">{event.actor?.name ?? "System"} · {formatDateTime(event.createdAt)}</p></div>)}</div></section></aside>
+      </div>
+    </div>
+  );
+}
+

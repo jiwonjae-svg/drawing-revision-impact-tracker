@@ -1,0 +1,318 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  DESIGNER
+  REVIEWER
+  PRODUCTION
+  ADMIN
+  VIEWER
+}
+
+enum DrawingStatus {
+  ACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+enum Discipline {
+  STRUCTURE
+  OUTFITTING
+  PIPING
+  ELECTRICAL
+  HVAC
+}
+
+enum RevisionStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ISSUED
+  CLOSED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ImpactType {
+  DRAWING
+  PROCESS
+  WORK_PACKAGE
+  MATERIAL
+  SCHEDULE
+  QUALITY
+  SAFETY
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+enum IntegrationType {
+  CSV_IMPORT
+  REST_PDM
+}
+
+enum ImportStatus {
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdRevisions   Revision[]          @relation("RevisionCreator")
+  ownedRevisions     Revision[]          @relation("RevisionOwner")
+  reviews            ReviewRecord[]
+  acknowledgements   Acknowledgement[]
+  auditEvents        AuditEvent[]
+  projectMemberships ProjectMembership[]
+  importBatches      ImportBatch[]
+
+  @@map("users")
+}
+
+model Project {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  vesselType String
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  drawings           Drawing[]
+  auditEvents        AuditEvent[]
+  memberships        ProjectMembership[]
+  integrationSources IntegrationSource[]
+  notificationOutbox NotificationOutbox[]
+
+  @@map("projects")
+}
+
+model ProjectMembership {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      UserRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId, role])
+  @@map("project_memberships")
+}
+
+model Drawing {
+  id         String        @id @default(cuid())
+  projectId  String
+  number     String        @unique
+  title      String
+  block      String
+  zone       String
+  discipline Discipline
+  status     DrawingStatus @default(ACTIVE)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revisions   Revision[]
+  auditEvents AuditEvent[]
+
+  @@index([projectId])
+  @@index([block, zone])
+  @@index([discipline])
+  @@map("drawings")
+}
+
+model Revision {
+  id            String         @id @default(cuid())
+  drawingId     String
+  revisionCode  String
+  status        RevisionStatus @default(DRAFT)
+  riskLevel     RiskLevel      @default(LOW)
+  summary       String         @db.Text
+  reason        String         @db.Text
+  mitigation    String?        @db.Text
+  effectiveDate DateTime?
+  dueDate       DateTime?
+  ownerId       String
+  createdById   String
+  issuedAt      DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  drawing            Drawing              @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+  owner              User                 @relation("RevisionOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdBy          User                 @relation("RevisionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  impacts            RevisionImpact[]
+  reviews            ReviewRecord[]
+  acknowledgements   Acknowledgement[]
+  auditEvents        AuditEvent[]
+  notificationOutbox NotificationOutbox[]
+
+  @@unique([drawingId, revisionCode])
+  @@index([status, riskLevel])
+  @@index([ownerId, dueDate])
+  @@map("revisions")
+}
+
+model IntegrationSource {
+  id         String          @id @default(cuid())
+  projectId  String
+  name       String
+  type       IntegrationType
+  status     String          @default("READY")
+  config     Json?
+  lastSyncAt DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  batches ImportBatch[]
+
+  @@index([projectId, type])
+  @@map("integration_sources")
+}
+
+model ImportBatch {
+  id           String       @id @default(cuid())
+  sourceId     String
+  importedById String
+  fileName     String
+  status       ImportStatus @default(PROCESSING)
+  rowCount     Int          @default(0)
+  errorCount   Int          @default(0)
+  summary      Json?
+  createdAt    DateTime     @default(now())
+  completedAt  DateTime?
+
+  source     IntegrationSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  importedBy User              @relation(fields: [importedById], references: [id], onDelete: Restrict)
+
+  @@index([sourceId, createdAt])
+  @@index([importedById])
+  @@map("import_batches")
+}
+
+model NotificationOutbox {
+  id            String             @id @default(cuid())
+  projectId     String
+  revisionId    String?
+  eventType     String
+  channel       String             @default("WEBHOOK")
+  status        NotificationStatus @default(PENDING)
+  payload       Json
+  attempts      Int                @default(0)
+  lastError     String?
+  nextAttemptAt DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revision Revision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([projectId, createdAt])
+  @@map("notification_outbox")
+}
+
+model RevisionImpact {
+  id          String     @id @default(cuid())
+  revisionId  String
+  type        ImpactType
+  target      String
+  description String     @db.Text
+  severity    RiskLevel  @default(LOW)
+  createdAt   DateTime   @default(now())
+
+  revision Revision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@index([revisionId])
+  @@index([type, severity])
+  @@map("revision_impacts")
+}
+
+model ReviewRecord {
+  id         String         @id @default(cuid())
+  revisionId String
+  reviewerId String
+  decision   ReviewDecision
+  comment    String         @db.Text
+  createdAt  DateTime       @default(now())
+
+  revision Revision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  reviewer User     @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([revisionId, createdAt])
+  @@index([reviewerId])
+  @@map("review_records")
+}
+
+model Acknowledgement {
+  id         String   @id @default(cuid())
+  revisionId String
+  userId     String
+  note       String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  revision Revision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([revisionId, userId])
+  @@index([revisionId])
+  @@map("acknowledgements")
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  projectId  String?
+  drawingId  String?
+  revisionId String?
+  action     String
+  entityType String
+  entityId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  actor    User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  drawing  Drawing?  @relation(fields: [drawingId], references: [id], onDelete: SetNull)
+  revision Revision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([revisionId])
+  @@map("audit_events")
+}
