@@ -132,6 +132,8 @@ npm run test:db
 npm run build
 npm run test:e2e
 npm run demo:capture
+npm run demo:outbox:verify
+npm run demo:webhook:verify
 ```
 
 The automated suite currently covers 20 unit/integration assertions, four Playwright scenarios across desktop and mobile, and a direct database check that confirms audit rows cannot be updated or deleted. GitHub Actions runs the same checks against PostgreSQL 16 on every push and pull request.
