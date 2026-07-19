@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:db": "tsx scripts/verify-audit-immutability.ts",
+    "demo:capture": "tsx scripts/capture-demo.ts",
     "qa": "npm run lint && npm run test && npm run build",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

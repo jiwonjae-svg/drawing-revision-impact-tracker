@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: drawingflow
+          POSTGRES_PASSWORD: drawingflow
+          POSTGRES_DB: drawingflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U drawingflow -d drawingflow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://drawingflow:drawingflow@localhost:5432/drawingflow?schema=public
+      AUTH_SECRET: github-actions-drawingflow-verification-secret
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_APP_NAME: DrawingFlow
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:db
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+            artifacts/
+          if-no-files-found: ignore

@@ -23,12 +23,12 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-chrome",
-      use: { ...devices["Desktop Chrome"], channel: "chrome", viewport: { width: 1440, height: 1000 } },
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } },
       testIgnore: /responsive\.spec\.ts/,
     },
     {
       name: "mobile-chrome",
-      use: { ...devices["Pixel 7"], channel: "chrome" },
+      use: { ...devices["Pixel 7"] },
       testMatch: /responsive\.spec\.ts/,
     },
   ],

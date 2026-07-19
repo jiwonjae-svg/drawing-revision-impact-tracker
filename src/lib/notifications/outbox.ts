@@ -35,6 +35,7 @@ export function enqueueRevisionNotification(
 
 export async function dispatchPendingNotifications(projectId?: string) {
   const webhookUrl = process.env.NOTIFICATION_WEBHOOK_URL;
+  const webhookSecret = process.env.NOTIFICATION_WEBHOOK_SECRET;
   if (!webhookUrl) return { processed: 0, sent: 0, failed: 0, configured: false };
 
   const pending = await prisma.notificationOutbox.findMany({
@@ -53,7 +54,10 @@ export async function dispatchPendingNotifications(projectId?: string) {
     try {
       const response = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(webhookSecret ? { "x-drawingflow-webhook-secret": webhookSecret } : {}),
+        },
         body: JSON.stringify(item.payload),
         signal: AbortSignal.timeout(5000),
       });

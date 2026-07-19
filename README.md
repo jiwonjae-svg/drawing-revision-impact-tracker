@@ -1,8 +1,13 @@
 # DrawingFlow
 
+[![CI](https://github.com/jiwonjae-svg/drawing-revision-impact-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/jiwonjae-svg/drawing-revision-impact-tracker/actions/workflows/ci.yml)
+[Live demo](https://drawing-revision-impact-tracker.vercel.app) · [Two-minute walkthrough](docs/DEMO_WALKTHROUGH.md)
+
 DrawingFlow is a portfolio-grade **Drawing Revision Impact Tracker** for ship design and manufacturing DX workflows. It controls a drawing change from draft through independent review, approved issue, production acknowledgement, and closure.
 
 > **Data disclaimer:** every project, drawing number, person, work package, status event, and audit record in this repository is synthetic. No employer, customer, vessel, or production drawing data is included.
+
+![DrawingFlow workflow preview](docs/drawingflow-preview.gif)
 
 ## Why this project exists
 
@@ -39,6 +44,16 @@ Release gates:
 - Durable notification outbox with webhook delivery and retry state
 - Read-only workflow, security posture, and role capability matrix
 
+## Evidence screens
+
+| Revision control dashboard | Revision impact evidence |
+|---|---|
+| ![Revision control dashboard](docs/screenshots/01-dashboard.png) | ![Revision impact evidence](docs/screenshots/03-revision-evidence.png) |
+
+| Controlled integrations | Append-only audit trail |
+|---|---|
+| ![Controlled integrations](docs/screenshots/04-integrations.png) | ![Append-only audit trail](docs/screenshots/05-audit-trail.png) |
+
 ## Demo roles
 
 All demo accounts use `Demo123!`.
@@ -60,6 +75,37 @@ All demo accounts use `Demo123!`.
 - **Validation:** Zod plus `csv-parse` for bounded, row-level import validation
 - **Integration:** Transactional import batches, typed REST PDM contract, and webhook notification outbox
 - **Testing:** Vitest for workflow, export, CSV, and PDM rules; Playwright for multi-role, project isolation, import, and responsive flows
+
+## Integration boundaries
+
+### PDM metadata adapter
+
+The implemented adapter is deliberately vendor-neutral and metadata-only. It calls `drawings/changes`, sends a bearer token, requests pages of at most 500 records, uses an eight-second timeout and `no-store` caching, and validates every upstream response before it reaches the revision workflow.
+
+Implemented metadata contract:
+
+| Upstream field | DrawingFlow meaning |
+|---|---|
+| `id` | Stable external record identity |
+| `number` | Controlled drawing number |
+| `title` | Human-readable drawing title |
+| `revision` | External revision code |
+| `changedAt` | Source-system change timestamp |
+| `lifecycleState` | Source lifecycle or release state |
+| `nextCursor` | Bounded incremental synchronization cursor |
+
+For an Aras Innovator or equivalent production adapter, the next implementation step would map ItemTypes and lifecycle states, authenticate with the organization's approved OAuth/session method, resolve change-item and EBOM/MBOM relationships, and persist idempotency checkpoints. Those vendor-specific connections are **not** claimed as implemented here; the repository provides the typed boundary and validation rules they would plug into.
+
+### Notification outbox and demo receiver
+
+Workflow mutations and notification events commit in the same database transaction. Dispatch processes a bounded batch, records attempts, marks successful deliveries `SENT`, and schedules failed deliveries for retry. The included `/api/demo/notifications` receiver:
+
+- requires a shared secret and compares it in constant time;
+- rejects payloads larger than 16 KiB;
+- accepts only a strict DrawingFlow event schema with `synthetic: true`;
+- returns `204` without persisting the inbound demonstration payload.
+
+This receiver proves the delivery path without introducing a third-party service or storing customer data.
 
 The application uses a server-only data access layer under `src/data`. Every server action authenticates the caller, checks project membership and role, validates input, reevaluates the workflow gate, and writes its data change, audit event, and notification event in one database transaction.
 
@@ -85,7 +131,10 @@ npm test
 npm run test:db
 npm run build
 npm run test:e2e
+npm run demo:capture
 ```
+
+The automated suite currently covers 20 unit/integration assertions, four Playwright scenarios across desktop and mobile, and a direct database check that confirms audit rows cannot be updated or deleted. GitHub Actions runs the same checks against PostgreSQL 16 on every push and pull request.
 
 The project uses Webpack for Next.js development and production builds because the current Turbopack release has a Windows Unicode-path panic when the repository lives below a Korean-named directory.
 
@@ -99,6 +148,7 @@ AUTH_SECRET=<strong-random-secret>
 AUTH_TRUST_HOST=true
 NEXT_PUBLIC_APP_NAME=DrawingFlow
 NOTIFICATION_WEBHOOK_URL=https://...
+NOTIFICATION_WEBHOOK_SECRET=<independent-random-secret>
 ```
 
 Run `prisma migrate deploy` during release. Optional Google or GitHub SSO is activated only when its client ID and secret are present, and only pre-approved member emails are accepted. Credentials remain enabled for the public role-based portfolio walkthrough.
@@ -107,6 +157,6 @@ Run `prisma migrate deploy` during release. Optional Google or GitHub SSO is act
 
 - This MVP tracks impact metadata rather than storing confidential CAD files.
 - The REST PDM adapter is a tested integration contract; no proprietary PDM endpoint or CAD binary is connected.
-- Webhook delivery is implemented, but remains queued when `NOTIFICATION_WEBHOOK_URL` is absent.
+- Webhook delivery and a secured synthetic demo receiver are implemented; events remain queued when `NOTIFICATION_WEBHOOK_URL` is absent.
 - A production owner should additionally configure retention policy, database roles, secret rotation, alerting, and organization-specific SSO.
 - ERP work-package synchronization and CAD-file preview are future work and are not claimed as implemented.

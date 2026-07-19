@@ -48,8 +48,8 @@ export function LoginForm({ ssoProviders = [] }: { ssoProviders?: ("google" | "g
       </div>
       <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />Manual demo sign-in<span className="h-px flex-1 bg-border" /></div>
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        <div className="space-y-1.5"><Label htmlFor="email">Email</Label><Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-        <div className="space-y-1.5"><Label htmlFor="password">Password</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+        <div className="space-y-1.5"><Label htmlFor="email">Email</Label><Input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+        <div className="space-y-1.5"><Label htmlFor="password">Password</Label><Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
         {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
         <Button type="submit" className="w-full" disabled={pending}>{pending ? <LoaderCircle className="animate-spin" /> : null}Open command dashboard</Button>
       </form>
